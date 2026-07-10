@@ -49,16 +49,27 @@ class AnthropicProvider(LLMProvider):
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": user}],
         )
+
+        def _run(with_temperature: bool) -> str:
+            call = dict(kwargs)
+            if with_temperature:
+                call["temperature"] = temperature
+            # Stream and accumulate: with a large max_tokens the SDK refuses a
+            # non-streaming call (it may exceed the 10-minute limit), so we
+            # always stream and reassemble the final message.
+            with self._client.messages.stream(**call) as stream:
+                message = stream.get_final_message()
+            return "".join(b.text for b in message.content if b.type == "text").strip()
+
         try:
-            resp = self._client.messages.create(temperature=temperature, **kwargs)
+            text = _run(with_temperature=True)
         except Exception as exc:
             # Newer models (e.g. claude-sonnet-5) deprecate `temperature` and
             # reject the request. Retry once without it rather than failing.
             if "temperature" in str(exc).lower():
-                resp = self._client.messages.create(**kwargs)
+                text = _run(with_temperature=False)
             else:
                 raise
-        text = "".join(block.text for block in resp.content if block.type == "text").strip()
         return LLMResponse(text=text, provider=self.name, model=self.model)
 
     @classmethod
