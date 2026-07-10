@@ -56,6 +56,7 @@ def analyze(
         llm,
         max_chars=settings.max_chars,
         max_tokens=settings.max_tokens,
+        max_workers=settings.max_workers,
         on_progress=progress,
     )
     analysis = analyzer.analyze(transcript)

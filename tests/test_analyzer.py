@@ -87,6 +87,62 @@ def test_unparseable_output_preserved_as_raw():
     assert analysis.raw is not None
 
 
+class StagedFakeProvider(LLMProvider):
+    """Returns candidate JSON for map prompts and the final analysis for the
+    synthesis prompt, recording each call's max_tokens (thread-safe append)."""
+
+    name = "staged"
+    default_model = "staged-1"
+
+    def __init__(self, model=None, fail_map=False):
+        super().__init__(model)
+        self.map_tokens: list[int] = []
+        self.synth_tokens: list[int] = []
+        self._fail_map = fail_map
+
+    def complete(self, prompt, *, system=None, max_tokens=2000, temperature=0.2, json_mode=False):
+        if "CANDIDATE POINTS:" in prompt:  # synthesis stage
+            self.synth_tokens.append(max_tokens)
+            return LLMResponse(text=ANALYSIS_JSON, provider=self.name, model=self.model)
+        # map stage
+        self.map_tokens.append(max_tokens)
+        if self._fail_map:
+            raise RuntimeError("simulated map failure")
+        return LLMResponse(
+            text='{"candidates": [{"statement": "c", "kind": "claim", "timestamp": "00:01"}]}',
+            provider=self.name,
+            model=self.model,
+        )
+
+
+def _long_transcript():
+    segs = [Segment(text=f"point number {i}", start=i * 1.0, duration=1.0) for i in range(60)]
+    return Transcript(video_id="x", url="u", segments=segs, title="Long", author="A")
+
+
+def test_parallel_map_reduce_collects_candidates():
+    provider = StagedFakeProvider()
+    # small max_chars forces multiple chunks -> the parallel map path
+    analyzer = LoadBearingAnalyzer(provider, max_chars=60, max_tokens=30000, max_workers=4)
+    analysis = analyzer.analyze(_long_transcript())
+
+    assert len(provider.map_tokens) > 1          # actually mapped several chunks
+    assert len(provider.synth_tokens) == 1       # exactly one synthesis call
+    assert all(t == 4000 for t in provider.map_tokens)   # map uses the capped budget
+    assert provider.synth_tokens[0] == 30000     # synthesis uses the full budget
+    assert analysis.thesis.startswith("Model choice")
+    assert len(analysis.components) == 1
+
+
+def test_map_failure_degrades_gracefully():
+    provider = StagedFakeProvider(fail_map=True)
+    analyzer = LoadBearingAnalyzer(provider, max_chars=60, max_workers=4)
+    analysis = analyzer.analyze(_long_transcript())
+    # every chunk raised, but synthesis still ran and produced a result
+    assert provider.synth_tokens == [analyzer.max_tokens]
+    assert analysis.raw is None
+
+
 def test_markdown_render_contains_sections():
     from loadbearing_youtube.models import Report
 

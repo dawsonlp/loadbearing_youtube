@@ -22,7 +22,9 @@ class Settings:
     model: str | None = None
     languages: list[str] = field(default_factory=lambda: ["en"])
     max_chars: int = 12000
-    max_tokens: int = 8000
+    max_tokens: int = 30000
+    # Bounded concurrency for the parallel map stage.
+    max_workers: int = 4
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -33,5 +35,6 @@ class Settings:
             model=os.getenv("LOADBEARING_MODEL") or None,
             languages=[x.strip() for x in langs.split(",") if x.strip()],
             max_chars=int(os.getenv("LOADBEARING_MAX_CHARS", "12000")),
-            max_tokens=int(os.getenv("LOADBEARING_MAX_TOKENS", "8000")),
+            max_tokens=int(os.getenv("LOADBEARING_MAX_TOKENS", "30000")),
+            max_workers=int(os.getenv("LOADBEARING_MAX_WORKERS", "4")),
         )

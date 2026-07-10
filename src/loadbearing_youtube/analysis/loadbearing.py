@@ -4,14 +4,22 @@ synthesis stage over an LLM provider."""
 from __future__ import annotations
 
 import json
+import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 from ..models import Analysis, Comparison, Component, Transcript
 from ..providers.base import LLMProvider
 from . import prompts
 from .chunking import chunk_transcript, fits_single_pass
 
+logger = logging.getLogger(__name__)
+
 _JSON_OBJ = re.compile(r"\{.*\}", re.DOTALL)
+
+# Per-chunk candidate extraction never needs the full synthesis budget; cap it
+# so we don't generate (and pay for) a huge output per chunk.
+_MAP_MAX_TOKENS = 4000
 
 
 def _parse_json(text: str) -> dict | None:
@@ -116,12 +124,16 @@ class LoadBearingAnalyzer:
         provider: LLMProvider,
         *,
         max_chars: int = 12000,
-        max_tokens: int = 2500,
+        max_tokens: int = 8000,
+        max_workers: int = 4,
         on_progress=None,
     ):
         self.provider = provider
         self.max_chars = max_chars
         self.max_tokens = max_tokens
+        # Bounded concurrency for the map stage. Cap keeps us under cloud rate
+        # limits and avoids thrashing a single local Ollama daemon.
+        self.max_workers = max(1, max_workers)
         self._progress = on_progress or (lambda msg: None)
 
     def analyze(self, transcript: Transcript) -> Analysis:
@@ -148,18 +160,21 @@ class LoadBearingAnalyzer:
     # --- map / reduce ----------------------------------------------------
     def _map_reduce(self, transcript: Transcript) -> Analysis:
         chunks = chunk_transcript(transcript, max_chars=self.max_chars)
-        self._progress(f"Transcript is long; mapping over {len(chunks)} chunks...")
+        workers = min(self.max_workers, len(chunks))
+        self._progress(
+            f"Transcript is long; mapping over {len(chunks)} chunks "
+            f"({workers} in parallel)..."
+        )
+
+        # Map stage: chunks are independent, so run them concurrently. A failed
+        # chunk degrades to no candidates rather than killing the whole run.
+        # Results are reassembled in chunk order for stable synthesis input.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            per_chunk = list(pool.map(self._map_one_chunk, chunks))
+
         candidates: list[dict] = []
-        for chunk in chunks:
-            self._progress(f"  chunk {chunk.index + 1}/{len(chunks)} ([{chunk.start:.0f}s])")
-            resp = self.provider.complete(
-                prompts.MAP_INSTRUCTION + chunk.text,
-                system=prompts.MAP_SYSTEM,
-                max_tokens=1500,
-                json_mode=True,
-            )
-            parsed = _parse_json(resp.text) or {}
-            candidates.extend(parsed.get("candidates", []) or [])
+        for chunk_candidates in per_chunk:
+            candidates.extend(chunk_candidates)
 
         self._progress(f"Synthesising {len(candidates)} candidate points...")
         candidate_json = json.dumps({"candidates": candidates}, ensure_ascii=False, indent=2)
@@ -170,6 +185,23 @@ class LoadBearingAnalyzer:
             json_mode=True,
         )
         return self._build_analysis(resp.text)
+
+    def _map_one_chunk(self, chunk) -> list[dict]:
+        """Extract candidate points from a single chunk. Runs on a worker
+        thread; must not raise — a failed chunk contributes no candidates."""
+        try:
+            resp = self.provider.complete(
+                prompts.MAP_INSTRUCTION + chunk.text,
+                system=prompts.MAP_SYSTEM,
+                max_tokens=_MAP_MAX_TOKENS,
+                json_mode=True,
+            )
+            parsed = _parse_json(resp.text) or {}
+            return parsed.get("candidates", []) or []
+        except Exception as exc:
+            logger.warning("map stage failed for chunk %s: %s", getattr(chunk, "index", "?"), exc)
+            self._progress(f"  chunk {getattr(chunk, 'index', '?')} failed: {exc}")
+            return []
 
     # --- shared ----------------------------------------------------------
     def _build_analysis(self, text: str) -> Analysis:
