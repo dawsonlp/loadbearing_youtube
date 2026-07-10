@@ -65,6 +65,22 @@ def test_parsing_survives_prose_wrapped_json():
     assert len(analysis.components) == 1
 
 
+def test_truncated_json_is_salvaged():
+    # Simulate output cut off mid-array (token cap): one complete component,
+    # then a second element truncated mid-field.
+    truncated = (
+        '{"thesis": "T", "content_type": "explainer", "components": ['
+        '{"statement": "first", "kind": "claim", "timestamp": "01:00"},'
+        '{"statement": "second", "kind": "cla'
+    )
+    analyzer = LoadBearingAnalyzer(FakeProvider(truncated), max_chars=100000)
+    analysis = analyzer.analyze(_transcript())
+    assert analysis.raw is None  # recovered, not dumped as raw
+    assert analysis.thesis == "T"
+    assert len(analysis.components) == 1
+    assert analysis.components[0].statement == "first"
+
+
 def test_unparseable_output_preserved_as_raw():
     analyzer = LoadBearingAnalyzer(FakeProvider("total gibberish, no json"), max_chars=100000)
     analysis = analyzer.analyze(_transcript())

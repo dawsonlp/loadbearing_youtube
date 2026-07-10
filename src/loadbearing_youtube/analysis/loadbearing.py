@@ -16,7 +16,7 @@ _JSON_OBJ = re.compile(r"\{.*\}", re.DOTALL)
 
 def _parse_json(text: str) -> dict | None:
     """Pull the first JSON object out of a model response, tolerating code
-    fences and surrounding prose."""
+    fences, surrounding prose, and truncated output."""
     try:
         return json.loads(text)
     except Exception:
@@ -26,8 +26,55 @@ def _parse_json(text: str) -> dict | None:
         try:
             return json.loads(match.group(0))
         except Exception:
-            return None
-    return None
+            pass
+    return _salvage_truncated_json(text)
+
+
+def _salvage_truncated_json(text: str) -> dict | None:
+    """Recover a usable object from JSON that was cut off (e.g. the model hit
+    its token cap mid-array). Trims to the last complete element and closes any
+    still-open brackets, dropping the incomplete tail rather than losing
+    everything."""
+    start = text.find("{")
+    if start == -1:
+        return None
+    s = text[start:]
+
+    cut = s.rfind("}")
+    if cut == -1:
+        return None
+    prefix = s[: cut + 1]
+
+    # Walk the prefix to find which brackets remain open, ignoring braces that
+    # appear inside strings.
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    for ch in prefix:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\":
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in "{[":
+            stack.append(ch)
+        elif ch == "}" and stack and stack[-1] == "{":
+            stack.pop()
+        elif ch == "]" and stack and stack[-1] == "[":
+            stack.pop()
+
+    closers = "".join("}" if b == "{" else "]" for b in reversed(stack))
+    candidate = prefix.rstrip().rstrip(",") + closers
+    try:
+        return json.loads(candidate)
+    except Exception:
+        return None
 
 
 def _to_components(items: list[dict]) -> list[Component]:

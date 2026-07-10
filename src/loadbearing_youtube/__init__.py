@@ -9,7 +9,7 @@ Public API:
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from .models import Analysis, Comparison, Component, Report, Segment, Transcript
 from .pipeline import analyze, get_transcript
