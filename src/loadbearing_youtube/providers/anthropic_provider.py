@@ -42,13 +42,22 @@ class AnthropicProvider(LLMProvider):
         user = prompt
         if json_mode:
             user = prompt + "\n\nRespond with a single valid JSON object and nothing else."
-        resp = self._client.messages.create(
+
+        kwargs = dict(
             model=self.model,
             system=system or "",
             max_tokens=max_tokens,
-            temperature=temperature,
             messages=[{"role": "user", "content": user}],
         )
+        try:
+            resp = self._client.messages.create(temperature=temperature, **kwargs)
+        except Exception as exc:
+            # Newer models (e.g. claude-sonnet-5) deprecate `temperature` and
+            # reject the request. Retry once without it rather than failing.
+            if "temperature" in str(exc).lower():
+                resp = self._client.messages.create(**kwargs)
+            else:
+                raise
         text = "".join(block.text for block in resp.content if block.type == "text").strip()
         return LLMResponse(text=text, provider=self.name, model=self.model)
 
