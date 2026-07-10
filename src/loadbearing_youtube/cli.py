@@ -77,10 +77,10 @@ def _parse_langs(value: str | None) -> list[str] | None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="loadbearing",
-        description="Extract a video transcript and expose its load-bearing components.",
+        prog="loadbearing-youtube",
+        description="Extract a YouTube transcript and expose its load-bearing components.",
     )
-    parser.add_argument("--version", action="version", version=f"loadbearing {__version__}")
+    parser.add_argument("--version", action="version", version=f"loadbearing-youtube {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     t = sub.add_parser("transcript", help="Fetch a transcript (no LLM).")

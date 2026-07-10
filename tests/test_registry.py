@@ -1,11 +1,11 @@
 import pytest
 
-from loadbearing.providers import (
+from loadbearing_youtube.providers import (
     discover,
     get_provider,
     registered_providers,
 )
-from loadbearing.providers.base import ProviderError
+from loadbearing_youtube.providers.base import ProviderError
 
 
 def test_builtin_providers_registered():
@@ -30,8 +30,8 @@ def test_discover_shape():
 def test_cloud_providers_unconfigured_without_keys(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    from loadbearing.providers.openai_provider import OpenAIProvider
-    from loadbearing.providers.anthropic_provider import AnthropicProvider
+    from loadbearing_youtube.providers.openai_provider import OpenAIProvider
+    from loadbearing_youtube.providers.anthropic_provider import AnthropicProvider
 
     assert OpenAIProvider.is_available() is False
     assert AnthropicProvider.is_available() is False

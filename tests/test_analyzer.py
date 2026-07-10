@@ -2,10 +2,10 @@
 
 import json
 
-from loadbearing.analysis.loadbearing import LoadBearingAnalyzer
-from loadbearing.models import Segment, Transcript
-from loadbearing.providers.base import LLMProvider, LLMResponse
-from loadbearing.render import render_markdown
+from loadbearing_youtube.analysis.loadbearing import LoadBearingAnalyzer
+from loadbearing_youtube.models import Segment, Transcript
+from loadbearing_youtube.providers.base import LLMProvider, LLMResponse
+from loadbearing_youtube.render import render_markdown
 
 
 class FakeProvider(LLMProvider):
@@ -72,7 +72,7 @@ def test_unparseable_output_preserved_as_raw():
 
 
 def test_markdown_render_contains_sections():
-    from loadbearing.models import Report
+    from loadbearing_youtube.models import Report
 
     analyzer = LoadBearingAnalyzer(FakeProvider(ANALYSIS_JSON), max_chars=100000)
     report = Report(transcript=_transcript(), analysis=analyzer.analyze(_transcript()))

@@ -1,5 +1,5 @@
-from loadbearing.analysis.chunking import chunk_transcript, to_blocks
-from loadbearing.models import Segment, Transcript
+from loadbearing_youtube.analysis.chunking import chunk_transcript, to_blocks
+from loadbearing_youtube.models import Segment, Transcript
 
 
 def _transcript(n=200, step=3.0):

@@ -1,7 +1,7 @@
 import pytest
 
-from loadbearing.sources.base import TranscriptError
-from loadbearing.sources.youtube import YouTubeSource, extract_video_id
+from loadbearing_youtube.sources.base import TranscriptError
+from loadbearing_youtube.sources.youtube import YouTubeSource, extract_video_id
 
 
 @pytest.mark.parametrize(

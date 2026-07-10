@@ -1,11 +1,16 @@
-# loadbearing
+# loadbearing_youtube
 
-Extract a video transcript from a URL and expose its **load-bearing
+Extract a transcript from a YouTube URL and expose its **load-bearing
 components** — the claims, decisions, tradeoffs, and verdicts the video's
 conclusion actually rests on. Not a generic "here's a summary": it isolates the
 structural argument and sets aside the filler.
 
-> Supersedes the older `youtube-summary` tool. Rebuilt as a linear Python
+> **First in the `loadbearing_*` family.** The idea is a series of tools that
+> each expose the load-bearing components of a different source (video,
+> podcast, paper, thread, …) behind one consistent CLI and analysis engine.
+> This project handles YouTube. See [Series layout](#series-layout).
+>
+> Supersedes the older `youtube-summary` tool — rebuilt as a linear Python
 > pipeline with a pluggable, discoverable model layer.
 
 ## Why a pipeline, not an agent
@@ -36,25 +41,25 @@ uv pip install -e '.[openai]'      # or [anthropic], or [all]
 
 ```bash
 # Just the transcript (no LLM)
-loadbearing transcript "https://www.youtube.com/watch?v=8mY9wx_iMSU"
-loadbearing transcript URL --no-timestamps -o transcript.txt
+loadbearing-youtube transcript "https://www.youtube.com/watch?v=8mY9wx_iMSU"
+loadbearing-youtube transcript URL --no-timestamps -o transcript.txt
 
 # Load-bearing analysis (uses the configured provider; Ollama by default)
-loadbearing analyze "https://www.youtube.com/watch?v=8mY9wx_iMSU"
-loadbearing analyze URL --provider ollama --model gemma4:e4b
-loadbearing analyze URL --format json -o report.json
+loadbearing-youtube analyze "https://www.youtube.com/watch?v=8mY9wx_iMSU"
+loadbearing-youtube analyze URL --provider ollama --model gemma4:e4b
+loadbearing-youtube analyze URL --format json -o report.json
 
 # Discover providers and the models each one can use
-loadbearing providers
+loadbearing-youtube providers
 ```
 
-`lb` is a shorter alias for `loadbearing`. You can also run it as a module:
-`python -m loadbearing analyze URL`.
+`lby` is a shorter alias for `loadbearing-youtube`. You can also run it as a
+module: `python -m loadbearing_youtube analyze URL`.
 
 ### As a library
 
 ```python
-from loadbearing import analyze, get_transcript
+from loadbearing_youtube import analyze, get_transcript
 
 report = analyze("https://youtu.be/8mY9wx_iMSU", provider="ollama", model="gemma4:e4b")
 print(report.analysis.thesis)
@@ -68,7 +73,8 @@ print(transcript.text)
 ## Configuration
 
 Set via environment (or a `.env`, if `python-dotenv` is installed). See
-[.env.example](.env.example). CLI flags override env.
+[.env.example](.env.example). CLI flags override env. The `LOADBEARING_*` prefix
+is shared across the family so one config can drive every tool in the series.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -101,13 +107,14 @@ both stages.
 
 Each provider declares `is_available()` (creds present / daemon reachable) and
 `list_models()` (live discovery where possible — Ollama lists local models,
-cloud SDKs list their catalog). `loadbearing providers` reports all three.
+cloud SDKs list their catalog). `loadbearing-youtube providers` reports all
+three.
 
 Add a backend by subclassing `LLMProvider` and registering it:
 
 ```python
-from loadbearing.providers import register
-from loadbearing.providers.base import LLMProvider, LLMResponse
+from loadbearing_youtube.providers import register
+from loadbearing_youtube.providers.base import LLMProvider, LLMResponse
 
 @register
 class MyProvider(LLMProvider):
@@ -118,13 +125,23 @@ class MyProvider(LLMProvider):
         return LLMResponse(text=..., provider=self.name, model=self.model)
 ```
 
+## Series layout
+
+This is the first of a planned `loadbearing_*` family. Today everything lives in
+one package. When a second source arrives (e.g. `loadbearing_podcast`), the
+analysis engine — `providers/`, `analysis/`, `render.py`, `models.py` — is the
+part worth sharing. The intended path is to lift those into a `loadbearing_core`
+package that each source project depends on, leaving only `sources/` and thin
+config per project. The relative-import structure here is already arranged so
+that extraction is mechanical, not a rewrite.
+
 ## Extending: expose as an agent tool
 
 Because the core is one function, wrapping it for an agent is a few lines:
 
 ```python
 # mcp_server.py (sketch)
-from loadbearing import analyze
+from loadbearing_youtube import analyze
 def analyze_video(url: str) -> dict:
     return analyze(url).to_dict()
 ```
